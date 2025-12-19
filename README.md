@@ -64,30 +64,59 @@ sequenceDiagram
     participant POD as TF2 Server Pods
 
     UC->>UC: Start Periodic Check<br/>(Configurable Interval)
-    UC->>SC: Execute Update Check Script<br/>(${STEAMAPP}_update.txt)
-    SC->>SC: Validate Current Version
 
-    alt Update Available
-        SC-->>UC: Update Available
+    alt Game Not Installed
+        UC->>PV: Check Game Directory
+        PV-->>UC: Not Found
+        UC->>UC: Flag as Update Needed<br/>(Initial Installation)
+    else Game Installed
+        UC->>PV: Read Local Manifest<br/>(appmanifest_*.acf)
+        PV-->>UC: Installed Build ID
+        UC->>SC: Query App Info (app_info_print)
+        SC-->>UC: Latest Build ID
+        UC->>UC: Compare Build IDs
+    end
+
+    alt Update/Install Needed
         UC->>SC: Execute Update Script
         SC->>PV: Download & Apply Update
 
         alt Update Success
             PV-->>SC: Update Complete
             SC-->>UC: Success
-            UC->>K8S: Query Pods by Selector/Volume
+            UC->>SC: Validate Installation
+            SC->>PV: Verify Game Files
+            PV-->>SC: Validation Complete
+            SC-->>UC: Validation Success
+            UC->>K8S: Query Pods by Selector
             K8S-->>UC: Return Matching Pods
-            UC->>K8S: Restart Deployments/StatefulSets
+            UC->>UC: Determine Pod Owners
+            UC->>K8S: Restart Workloads<br/>(Deployments/StatefulSets/etc.)
             K8S->>POD: Rolling Restart
             POD->>PV: Mount Updated Files
             UC->>UC: Log Success & Reset Retry Count
-        else Update Failed
+        else 0x6 Error Detected
+            SC-->>UC: State 0x6 Error
+            UC->>UC: Detect 0x6 Error Pattern
+            UC->>PV: Clear steamapps Directory
+            PV-->>UC: Cleared
+            UC->>SC: Retry Update Script
+            SC->>PV: Download & Apply Update
+            alt Retry Success
+                PV-->>SC: Update Complete
+                SC-->>UC: Success
+                UC->>K8S: Restart Workloads
+            else Retry Failed
+                SC-->>UC: Failure
+                UC->>UC: Log Error & Increment Retry
+                UC->>UC: Wait Before Next Retry
+            end
+        else Other Update Failure
             SC-->>UC: Failure
             UC->>UC: Log Error & Increment Retry
             UC->>UC: Wait Before Retry
         end
-    else No Update
-        SC-->>UC: Already Up-to-Date
+    else Already Up-to-Date
         UC->>UC: Continue Monitoring
     end
 ```
@@ -97,22 +126,36 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> CheckingUpdate: Check Timer Triggered
-    CheckingUpdate --> UpdateAvailable: New Update Detected
-    CheckingUpdate --> Idle: No Update
+    Idle --> CheckingInstallation: Check Timer Triggered
+
+    CheckingInstallation --> InitialInstall: Game Not Installed
+    CheckingInstallation --> ComparingBuildIDs: Game Installed
+
+    InitialInstall --> Downloading: Start Initial Install
+
+    ComparingBuildIDs --> ReadLocalManifest: Get Installed Build ID
+    ReadLocalManifest --> QuerySteamAPI: Get Latest Build ID
+    QuerySteamAPI --> UpdateAvailable: Build IDs Differ
+    QuerySteamAPI --> Idle: Build IDs Match (Up-to-Date)
 
     UpdateAvailable --> Downloading: Start Update
     Downloading --> Installing: Download Complete
-    Downloading --> Failed: Download Error
+    Downloading --> Error0x6Detected: State 0x6 Error
+    Downloading --> Failed: Other Download Error
+
+    Error0x6Detected --> ClearingSteamApps: Remove steamapps Directory
+    ClearingSteamApps --> Downloading: Retry After Cleanup
 
     Installing --> Validating: Install Complete
+    Installing --> Error0x6Detected: State 0x6 Error
     Installing --> Failed: Install Error
 
-    Validating --> RestartingPods: Validation Success
+    Validating --> DeterminingOwners: Validation Success
     Validating --> Failed: Validation Error
 
-    RestartingPods --> Success: All Pods Restarted
-    RestartingPods --> Failed: Restart Error
+    DeterminingOwners --> RestartingWorkloads: Find Pod Owners
+    RestartingWorkloads --> Success: All Workloads Restarted
+    RestartingWorkloads --> Failed: Restart Error
 
     Success --> Idle: Wait for Next Check
 
@@ -124,15 +167,18 @@ stateDiagram-v2
 
 ## Features
 
-- **Automatic Update Detection**: Leverages SteamCMD to detect when TF2 updates are available
+- **Automatic Update Detection**: Leverages SteamCMD to detect when TF2 updates are available using build ID comparison (no unnecessary downloads)
+- **Initial Installation Support**: Automatically detects and performs initial game installation if not present
+- **Build ID Tracking**: Compares local manifest build IDs with Steam's latest build IDs for efficient update detection
+- **0x6 Error Recovery**: Automatic detection and recovery from Steam's 0x6 state errors by clearing and retrying
 - **Smart Pod Selection**: Restart pods based on:
   - Label selectors (e.g., `app=tf2-server`)
-  - Volume mount path matching
+  - Workload ownership detection
 - **Multiple Workload Support**: Handles Deployments, StatefulSets, DaemonSets, and ReplicaSets
 - **Error Handling**: Configurable retry logic with exponential backoff
 - **Update Validation**: Verifies update success before restarting pods
 - **Zero-Downtime Updates**: Utilizes Kubernetes rolling restart mechanisms
-- **Observability**: Structured logging and metrics (planned)
+- **Observability**: Structured logging with klog for detailed operation tracking
 
 ## Prerequisites
 
