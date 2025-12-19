@@ -1,0 +1,104 @@
+version: '3'
+
+vars:
+  BINARY_NAME: update-controller
+  DOCKER_IMAGE: ghcr.io/udl-tf/update-controller
+  TAG:
+    sh: echo "${TAG:-latest}"
+
+tasks:
+  default:
+    desc: Run tests and build
+    cmds:
+      - task: test
+      - task: build
+
+  build:
+    desc: Build the controller binary
+    cmds:
+      - echo "Building {{.BINARY_NAME}}..."
+      - go build -o {{.BINARY_NAME}} ./cmd/controller
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BINARY_NAME}}"
+
+  test:
+    desc: Run tests
+    cmds:
+      - echo "Running tests..."
+      - go test -v ./...
+
+  test-race:
+    desc: Run tests with race detection
+    cmds:
+      - echo "Running tests with race detection..."
+      - go test -race -v ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - echo "Cleaning..."
+      - rm -f {{.BINARY_NAME}}
+      - go clean
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - echo "Building Docker image {{.DOCKER_IMAGE}}:{{.TAG}}..."
+      - docker build -t {{.DOCKER_IMAGE}}:{{.TAG}} .
+
+  docker-push:
+    desc: Push Docker image
+    deps:
+      - docker-build
+    cmds:
+      - echo "Pushing Docker image {{.DOCKER_IMAGE}}:{{.TAG}}..."
+      - docker push {{.DOCKER_IMAGE}}:{{.TAG}}
+
+  run:
+    desc: Run controller locally (requires kubeconfig)
+    cmds:
+      - echo "Running controller locally..."
+      - go run ./cmd/controller --kubeconfig={{.HOME}}/.kube/config
+    vars:
+      HOME:
+        sh: echo $HOME
+
+  run-debug:
+    desc: Run controller with debug logging
+    cmds:
+      - echo "Running controller with debug logging..."
+      - go run ./cmd/controller --kubeconfig={{.HOME}}/.kube/config
+    env:
+      LOG_LEVEL: debug
+    vars:
+      HOME:
+        sh: echo $HOME
+
+  deps:
+    desc: Install dependencies
+    cmds:
+      - echo "Installing dependencies..."
+      - go mod download
+      - go mod tidy
+
+  fmt:
+    desc: Format code
+    cmds:
+      - echo "Formatting code..."
+      - go fmt ./...
+
+  lint:
+    desc: Lint code (requires golangci-lint)
+    cmds:
+      - echo "Linting code..."
+      - golangci-lint run
+
+  generate:
+    desc: Generate code
+    cmds:
+      - echo "Generating code..."
+      - go generate ./...
