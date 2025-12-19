@@ -1,0 +1,112 @@
+# Default values for update-controller.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/udl-tf/update-controller
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# RBAC configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+# Controller configuration
+config:
+  # Interval to check for updates
+  checkInterval: "30m"
+  # Path to SteamCMD installation
+  steamcmdPath: "/home/steam/steamcmd"
+  # Steam app name
+  steamApp: "tf"
+  # Steam app ID
+  steamAppId: "232250"
+  # Path where game files are mounted
+  gameMountPath: "/tf"
+  # Update script name
+  updateScript: "tf_update.txt"
+  # Label selector for pods to restart
+  podSelector: "app=tf2-server"
+  # Maximum number of retries on failure
+  maxRetries: "3"
+  # Delay between retries
+  retryDelay: "5m"
+  # Namespace where game servers are running
+  namespace: "game-servers"
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Volume configuration for game files
+persistence:
+  enabled: true
+  # Type of volume: "pvc" or "hostPath"
+  type: pvc
+  # Name of existing PVC to use (only for type: pvc)
+  existingClaim: ""
+  # If not using an existing claim, create one with these settings (only for type: pvc)
+  size: 50Gi
+  storageClassName: standard
+  accessModes:
+    - ReadWriteMany
+  # HostPath configuration (only for type: hostPath)
+  hostPath:
+    # Path on the host node's filesystem
+    path: "/mnt/game-files"
+    # Type of hostPath volume (valid values: DirectoryOrCreate, Directory, FileOrCreate, File, Socket, CharDevice, BlockDevice)
+    type: DirectoryOrCreate
+
+# Namespace configuration
+namespace:
+  # Create the namespace if it doesn't exist
+  create: true
+  # Name of the namespace
+  name: game-servers
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# Container security context
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000

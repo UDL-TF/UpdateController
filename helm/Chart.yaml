@@ -1,0 +1,18 @@
+apiVersion: v2
+name: update-controller
+description: A Kubernetes controller for automatically managing TF2 game server updates
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - kubernetes
+  - controller
+  - game-servers
+  - tf2
+  - steamcmd
+home: https://github.com/UDL-TF/UpdateController
+sources:
+  - https://github.com/UDL-TF/UpdateController
+maintainers:
+  - name: UDL-TF
+    url: https://github.com/UDL-TF

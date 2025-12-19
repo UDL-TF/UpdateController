@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "update-controller.fullname" . }}-config
+  namespace: {{ include "update-controller.namespace" . }}
+  labels:
+    {{- include "update-controller.labels" . | nindent 4 }}
+data:
+  CHECK_INTERVAL: {{ .Values.config.checkInterval | quote }}
+  STEAMCMD_PATH: {{ .Values.config.steamcmdPath | quote }}
+  STEAMAPP: {{ .Values.config.steamApp | quote }}
+  STEAMAPPID: {{ .Values.config.steamAppId | quote }}
+  GAME_MOUNT_PATH: {{ .Values.config.gameMountPath | quote }}
+  UPDATE_SCRIPT: {{ .Values.config.updateScript | quote }}
+  POD_SELECTOR: {{ .Values.config.podSelector | quote }}
+  MAX_RETRIES: {{ .Values.config.maxRetries | quote }}
+  RETRY_DELAY: {{ .Values.config.retryDelay | quote }}
+  NAMESPACE: {{ .Values.config.namespace | quote }}
