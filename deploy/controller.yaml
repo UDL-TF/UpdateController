@@ -1,0 +1,110 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: game-servers
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: update-controller
+  namespace: game-servers
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: update-controller
+rules:
+  - apiGroups: ['']
+    resources: ['pods']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['apps']
+    resources: ['deployments', 'statefulsets', 'daemonsets', 'replicasets']
+    verbs: ['get', 'list', 'patch', 'update']
+  - apiGroups: ['']
+    resources: ['persistentvolumeclaims']
+    verbs: ['get', 'list']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: update-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: update-controller
+subjects:
+  - kind: ServiceAccount
+    name: update-controller
+    namespace: game-servers
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: update-controller-config
+  namespace: game-servers
+data:
+  CHECK_INTERVAL: "30m"
+  STEAMCMD_PATH: "/home/steam/steamcmd"
+  STEAMAPP: "tf"
+  STEAMAPPID: "232250"
+  GAME_MOUNT_PATH: "/tf"
+  UPDATE_SCRIPT: "tf_update.txt"
+  POD_SELECTOR: "app=tf2-server"
+  MAX_RETRIES: "3"
+  RETRY_DELAY: "5m"
+  NAMESPACE: "game-servers"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: update-controller
+  namespace: game-servers
+  labels:
+    app: update-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: update-controller
+  template:
+    metadata:
+      labels:
+        app: update-controller
+    spec:
+      serviceAccountName: update-controller
+      containers:
+        - name: controller
+          image: ghcr.io/udl-tf/update-controller:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: update-controller-config
+          volumeMounts:
+            - name: game-files
+              mountPath: /tf
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: game-files
+          persistentVolumeClaim:
+            claimName: tf2-game-files
+---
+# Example PVC for game files (adjust as needed)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tf2-game-files
+  namespace: game-servers
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
