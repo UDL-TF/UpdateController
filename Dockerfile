@@ -17,11 +17,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o update-controller
 # Runtime stage - use TF2 image as base for SteamCMD
 FROM ghcr.io/udl-tf/tf2-image:latest
 
-# Copy the controller binary from builder
-COPY --from=builder /build/update-controller /usr/local/bin/update-controller
-
-# Set permissions
-RUN chmod +x /usr/local/bin/update-controller
+# Copy the controller binary from builder with executable permissions
+COPY --from=builder --chmod=755 /build/update-controller /usr/local/bin/update-controller
 
 USER ${USER}
 
