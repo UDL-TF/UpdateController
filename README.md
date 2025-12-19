@@ -193,16 +193,18 @@ stateDiagram-v2
 ### Using Helm (Recommended)
 
 ```bash
-# Add the UDL-TF Helm repository
-helm repo add udl-tf https://charts.udl-tf.io
-helm repo update
-
-# Install the UpdateController
-helm install update-controller udl-tf/update-controller \
+# Install the UpdateController from OCI registry
+helm install update-controller oci://ghcr.io/udl-tf/helm/update-controller \
   --namespace game-servers \
   --create-namespace \
   --set image.tag=latest \
   --set config.checkInterval=30m
+
+# Or specify a version
+helm install update-controller oci://ghcr.io/udl-tf/helm/update-controller \
+  --version 0.1.0 \
+  --namespace game-servers \
+  --create-namespace
 ```
 
 ### Using kubectl
