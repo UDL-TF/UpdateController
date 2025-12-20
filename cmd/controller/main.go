@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/UDL-TF/RestartController/pkg/k8s"
 	"github.com/UDL-TF/UpdateController/internal/controller"
-	"github.com/UDL-TF/UpdateController/internal/k8s"
 	"github.com/UDL-TF/UpdateController/internal/steamcmd"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"

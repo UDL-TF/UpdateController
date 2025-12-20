@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/UDL-TF/UpdateController/internal/k8s"
+	"github.com/UDL-TF/RestartController/pkg/k8s"
+
 	"github.com/UDL-TF/UpdateController/internal/steamcmd"
 	"k8s.io/klog/v2"
 )
