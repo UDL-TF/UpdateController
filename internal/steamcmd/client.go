@@ -1,12 +1,16 @@
 package steamcmd
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"k8s.io/klog/v2"
 )
@@ -103,10 +107,7 @@ func (c *Client) ApplyUpdate(ctx context.Context) error {
 		return fmt.Errorf("failed to create update script: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, c.steamCMDPath+"/steamcmd.sh", "+runscript", scriptPath)
-	output, err := cmd.CombinedOutput()
-
-	klog.V(2).Infof("SteamCMD update output: %s", string(output))
+	output, err := c.runSteamCMD(ctx, scriptPath, "update")
 
 	// Check for 0x6 error state and attempt recovery
 	if c.hasState0x6Error(output) {
@@ -117,9 +118,7 @@ func (c *Client) ApplyUpdate(ctx context.Context) error {
 
 		// Retry update after clearing steamapps
 		klog.Info("Retrying update after clearing steamapps...")
-		cmd = exec.CommandContext(ctx, c.steamCMDPath+"/steamcmd.sh", "+runscript", scriptPath)
-		output, err = cmd.CombinedOutput()
-		klog.V(2).Infof("SteamCMD retry output: %s", string(output))
+		output, err = c.runSteamCMD(ctx, scriptPath, "update-retry")
 
 		if err != nil {
 			return fmt.Errorf("steamcmd update failed after 0x6 recovery: %w, output: %s", err, string(output))
@@ -144,10 +143,7 @@ func (c *Client) ValidateUpdate(ctx context.Context) error {
 		return fmt.Errorf("failed to create validate script: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, c.steamCMDPath+"/steamcmd.sh", "+runscript", scriptPath)
-	output, err := cmd.CombinedOutput()
-
-	klog.V(2).Infof("SteamCMD validation output: %s", string(output))
+	output, err := c.runSteamCMD(ctx, scriptPath, "validate")
 
 	if err != nil {
 		return fmt.Errorf("validation failed: %w, output: %s", err, string(output))
@@ -318,6 +314,77 @@ quit
 	}
 
 	return "", fmt.Errorf("buildid not found in app_info output")
+}
+
+// runSteamCMD executes steamcmd scripts while streaming progress output.
+func (c *Client) runSteamCMD(ctx context.Context, scriptPath, stage string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, c.steamCMDPath+"/steamcmd.sh", "+runscript", scriptPath)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach steamcmd stdout: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to attach steamcmd stderr: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start steamcmd: %w", err)
+	}
+
+	var combined bytes.Buffer
+	var combinedMu sync.Mutex
+	var wg sync.WaitGroup
+	logStream := func(r io.Reader, stream string) {
+		defer wg.Done()
+		scanner := bufio.NewScanner(r)
+		for scanner.Scan() {
+			line := scanner.Text()
+			trimmed := strings.TrimSpace(line)
+			combinedMu.Lock()
+			combined.WriteString(line)
+			combined.WriteByte('\n')
+			combinedMu.Unlock()
+
+			if trimmed == "" {
+				continue
+			}
+
+			if c.shouldLogProgress(trimmed) {
+				klog.Infof("[%s:%s] %s", stage, stream, trimmed)
+			} else {
+				klog.V(4).Infof("[%s:%s] %s", stage, stream, trimmed)
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			klog.Warningf("[%s:%s] error while reading steamcmd output: %v", stage, stream, err)
+		}
+	}
+
+	wg.Add(2)
+	go logStream(stdout, "stdout")
+	go logStream(stderr, "stderr")
+
+	cmdErr := cmd.Wait()
+	wg.Wait()
+
+	return combined.Bytes(), cmdErr
+}
+
+// shouldLogProgress decides whether a steamcmd line should be surfaced at info level.
+func (c *Client) shouldLogProgress(line string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "update state") ||
+		strings.Contains(lower, "progress") ||
+		strings.Contains(lower, "downloading") ||
+		strings.Contains(lower, "install") ||
+		strings.Contains(lower, "validat") ||
+		strings.Contains(lower, "success") ||
+		strings.Contains(lower, "error") ||
+		strings.Contains(lower, "app_update")
 }
 
 // parseUpdateStatus parses SteamCMD output to determine if an update is needed
