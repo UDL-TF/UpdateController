@@ -37,19 +37,29 @@ func NewClient(steamCMDPath, steamApp, steamAppID, gameMountPath, updateScript s
 
 // isGameInstalled checks if the game is already installed
 func (c *Client) isGameInstalled() bool {
-	// Check if the game directory exists and contains essential files
+	// The install root is the mount path we hand to steamcmd's force_install_dir
+	if info, err := os.Stat(c.gameMountPath); err != nil || !info.IsDir() {
+		return false
+	}
+
+	manifestPath := filepath.Join(c.gameMountPath, "steamapps", fmt.Sprintf("appmanifest_%s.acf", c.steamAppID))
+	if _, err := os.Stat(manifestPath); err == nil {
+		return true
+	}
+
+	// srcds_run lives in the install root, so treat it as a secondary signal
+	srcdsFile := filepath.Join(c.gameMountPath, "srcds_run")
+	if _, err := os.Stat(srcdsFile); err == nil {
+		return true
+	}
+
+	// Fall back to checking the TF folder for older installs
 	gameDir := filepath.Join(c.gameMountPath, c.steamApp)
-	if _, err := os.Stat(gameDir); os.IsNotExist(err) {
-		return false
+	if info, err := os.Stat(gameDir); err == nil && info.IsDir() {
+		return true
 	}
 
-	// Check for a critical game file to confirm installation
-	srcdsFile := filepath.Join(gameDir, "srcds_run")
-	if _, err := os.Stat(srcdsFile); os.IsNotExist(err) {
-		return false
-	}
-
-	return true
+	return false
 }
 
 // CheckUpdate checks if a TF2 update is available by comparing build IDs
